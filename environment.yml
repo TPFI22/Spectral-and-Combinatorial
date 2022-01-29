@@ -1,0 +1,24 @@
+name: spectral_gin
+channels:
+  - pytorch
+  - conda-forge
+  - dglteam
+  - pyg
+dependencies:
+  - python=3.8
+  - pip
+  - matplotlib
+  - jupyter
+  - jupyterlab
+  - pytorch>=1.4
+  - torchvision>=0.5
+  - torchtext
+  - opencv
+  - librosa
+  - nb_conda_kernels
+  - dgl>=0.4.3
+  - pyg
+  - networkx
+  - pip:
+    - torchviz
+    - netlsd
