@@ -10,68 +10,35 @@ from torch_geometric.data import Data
 from sklearn.model_selection import StratifiedKFold
 from torch import optim
 from models import MyGNN
+from transforms import ThreeSubgraphIsomorphismTransform
+from torch_geometric.utils import degree
+from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_std
 
 wl1_fail = (
     np.array([
-        [0, 1, 0, 0, 0, 0, 0, 0, 0, 1], 
-        [1, 0, 1, 0, 0, 0, 0, 0, 0, 0],  
-        [0, 1, 0, 1, 0, 0, 0, 1, 0, 0], 
-        [0, 0, 1, 0, 1, 0, 0, 0, 0, 0], 
-        [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],  
-        [0, 0, 0, 0, 1, 0, 1, 0, 0, 0],  
-        [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],  
-        [0, 0, 1, 0, 0, 0, 1, 0, 1, 0],  
-        [0, 0, 0, 0, 0, 0, 0, 1, 0, 1],  
-        [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],  
+        [0, 1, 0, 0, 0, 0, 0, 0, 0, 1],  # red
+        [1, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # blue
+        [0, 1, 0, 1, 0, 0, 0, 1, 0, 0],  # green
+        [0, 0, 1, 0, 1, 0, 0, 0, 0, 0],  # blue
+        [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],  # red
+        [0, 0, 0, 0, 1, 0, 1, 0, 0, 0],  # red
+        [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],  # blue
+        [0, 0, 1, 0, 0, 0, 1, 0, 1, 0],  # green
+        [0, 0, 0, 0, 0, 0, 0, 1, 0, 1],  # blue
+        [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # red
     ]),
     np.array([
-        [0, 1, 0, 0, 0, 0, 0, 0, 0, 1],  
-        [1, 0, 1, 0, 0, 0, 0, 0, 0, 0],  
-        [0, 1, 0, 1, 0, 0, 0, 0, 1, 0],  
-        [0, 0, 1, 0, 1, 0, 0, 1, 0, 0], 
-        [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],  
-        [0, 0, 0, 0, 1, 0, 1, 0, 0, 0],  
-        [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],  
-        [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],  
-        [0, 0, 1, 0, 0, 0, 0, 0, 0, 1],  
-        [1, 0, 0, 0, 0, 0, 0, 0, 1, 0], 
+        [0, 1, 0, 0, 0, 0, 0, 0, 0, 1],  # red
+        [1, 0, 1, 0, 0, 0, 0, 0, 0, 0],  # blue
+        [0, 1, 0, 1, 0, 0, 0, 0, 1, 0],  # green
+        [0, 0, 1, 0, 1, 0, 0, 1, 0, 0],  # green
+        [0, 0, 0, 1, 0, 1, 0, 0, 0, 0],  # blue
+        [0, 0, 0, 0, 1, 0, 1, 0, 0, 0],  # red
+        [0, 0, 0, 0, 0, 1, 0, 1, 0, 0],  # red
+        [0, 0, 0, 1, 0, 0, 1, 0, 0, 0],  # blue
+        [0, 0, 1, 0, 0, 0, 0, 0, 0, 1],  # blue
+        [1, 0, 0, 0, 0, 0, 0, 0, 1, 0],  # red
     ]))
-
-wl2_fail = (np.array([
-    [0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0],
-    [1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-    [1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0],
-    [1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0],
-    [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1],
-    [1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1],
-    [0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0],
-    [0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1],
-    [0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1],
-    [0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1],
-    [0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1],
-    [0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0],
-    [0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0],
-    [0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0],
-    [0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0]
-]), np.array([
-    [0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-    [1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
-    [1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-    [1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0],
-    [0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0],
-    [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-    [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-    [0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0],
-    [0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0],
-    [0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1],
-    [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1],
-    [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1],
-    [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0]
-]))
 
 spectral_fail = (np.array([
     [0, 1, 0, 0, 1, 0, 0, 1],
@@ -169,10 +136,35 @@ def add_spectral_features(dataset):
     for i in range(len(dataset)):
         dataset[i].x = SpectralTransform.__heat_kernel_features__(dataset[i].edge_index, dataset[i].num_nodes,
                                                                   t_range=torch.logspace(-2, 2, steps=10))
+def add_3SI_features(dataset):
+    for i in range(len(dataset)):
+        dataset[i].x = ThreeSubgraphIsomorphismTransform.__3SI__(dataset[i].edge_index, dataset[i].num_nodes)
+        
+def add_LDP_features(dataset):
+    for data in dataset:
+        row, col = data.edge_index
+        N = data.num_nodes
 
+        deg = degree(row, N, dtype=torch.float)
+        deg_col = deg[col]
 
+        min_deg, _ = scatter_min(deg_col, row, dim_size=N)
+        min_deg[min_deg > 10000] = 0
+        max_deg, _ = scatter_max(deg_col, row, dim_size=N)
+        max_deg[max_deg < -10000] = 0
+        mean_deg = scatter_mean(deg_col, row, dim_size=N)
+        std_deg = scatter_std(deg_col, row, dim_size=N)
 
-																  
+        data.x = torch.stack([deg, min_deg, max_deg, mean_deg, std_deg], dim=1)
+
+  
+
+def normalize(dataset):
+  for d in dataset:
+           ma = torch.max(d.x,dim=0)[0]
+           mi = torch.min(d.x,dim=0)[0]
+           d.x = torch.nan_to_num((d.x-mi)/(ma-mi))
+
 repeats = 100
 graph_couples = [wl1_fail, spectral_fail]
 accs_spectral = [np.zeros(repeats), np.zeros(repeats), np.zeros(repeats)]
@@ -196,11 +188,13 @@ for r in range(repeats):
 
         accs_standard[j][r] = test(vanilla_model, test_graphs)
 
-        add_spectral_features(train_graphs)
-        add_spectral_features(test_graphs)
+        add_LDP_features(train_graphs)
+        normalize(train_graphs)
+        add_LDP_features(test_graphs)
+        normalize(test_graphs)
         for i in range(len(dataset)):
             dataset[i] = dataset[i].to(device)
-        sepctral_model = MyGNN("GAT", in_channels=20, hidden_channels=64,
+        sepctral_model = MyGNN("GAT", in_channels=5, hidden_channels=64,
                                final_dropout=0, num_classes=2).to(device)
         optimizer = optim.Adam(sepctral_model.parameters(), lr=0.01)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
@@ -211,6 +205,6 @@ for r in range(repeats):
         accs_spectral[j][r] = test(sepctral_model, test_graphs)
 
 print(
-    f"1-WL fail results: SP-GAT:{accs_spectral[0].mean()}±{accs_spectral[0].std()}, GAT: {accs_standard[0].mean()}±{accs_standard[0].std()}")
+    f"1-WL fail results: SP-GraphSAGE:{accs_spectral[0].mean()}±{accs_spectral[0].std()}, GraphSAGE: {accs_standard[0].mean()}±{accs_standard[0].std()}")
 print(
-    f"spectral fail results: SP-GAT:{accs_spectral[1].mean()}±{accs_spectral[1].std()}, GAT: {accs_standard[1].mean()}±{accs_standard[1].std()}")
+    f"spectral fail results: SP-GraphSAGE:{accs_spectral[1].mean()}±{accs_spectral[1].std()}, GraphSAGE: {accs_standard[1].mean()}±{accs_standard[1].std()}")
