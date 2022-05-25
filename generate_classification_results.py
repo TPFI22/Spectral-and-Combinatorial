@@ -3,7 +3,7 @@ import torch;
 torch.manual_seed(0)
 from torch import optim
 from torch_geometric.datasets import TUDataset
-from torch_geometric.transforms import ToDevice
+from torch_geometric.transforms import ToDevice,LocalDegreeProfile,Compose
 from utils import *
 from transforms import *
 from models import *
@@ -27,6 +27,14 @@ def generate_classification_results(model_name, dataset_name, hidden_layers_list
         dataset = TUDataset(root=f'./dataset_new', name=dataset_name, use_node_attr=True,
                             transform=ToDevice(device),
                             pre_transform=ConstFeaturesTransform())
+    elif features == 'subgraph':
+        dataset = TUDataset(root=f'./dataset_subgraph', name=dataset_name, use_node_attr=True,
+                            #transform=ToDevice(device),
+                            pre_transform=Compose([ThreeSubgraphIsomorphismTransform(),MinMaxNormalizationTransform(),ToDevice(device)]))
+    elif features == 'degree':
+        dataset = TUDataset(root=f'./dataset_degree', name=dataset_name, use_node_attr=True,
+                            #transform=ToDevice(device),
+                            pre_transform=Compose([LocalDegreeProfile(),MinMaxNormalizationTransform(),ToDevice(device)]))
     for final_dropout in final_dropouts:
         for hidden_layers in hidden_layers_list:
             for fold in list(range(10)):

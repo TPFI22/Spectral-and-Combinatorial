@@ -7,6 +7,7 @@ from torch_geometric.typing import Union
 from torch_geometric.utils import to_undirected
 import networkx as nx
 from networkx import laplacian_matrix
+import itertools
 
 
 class ConstFeaturesTransform(BaseTransform):
@@ -99,4 +100,59 @@ class SpectralTransform(BaseTransform):
                 store.x = torch.cat([x, c.to(x.device, x.dtype)], dim=-1)
             else:
                 store.x = c
+        return data
+
+
+class ThreeSubgraphIsomorphismTransform(BaseTransform):
+    def __init__(self):
+        BaseTransform.__init__(self)
+        
+    @staticmethod
+    def __3SI__(edge_index: torch.Tensor, num_nodes):
+      c = torch.full((num_nodes, 1), 1, dtype=torch.float)
+      g = nx.Graph()
+      g.add_nodes_from(list(range(num_nodes)))
+      g.add_edges_from((to_undirected(edge_index).T.tolist()))
+      adj_mat = torch.tensor(nx.to_numpy_array(g))
+      new_features = torch.zeros((num_nodes, 3))
+
+      for x, y, z in itertools.combinations(list(range(num_nodes)),3):
+        if adj_mat[x, y] == 1 and adj_mat[y, z] == 1 and adj_mat[z, x] == 1:
+          new_features[[x, y, z], 0] += 1
+          continue
+        if adj_mat[x, y] == 1 and adj_mat[y, z] == 1:
+          new_features[[x, z], 1] += 1
+          new_features[y, 2] += 1
+          continue
+        if adj_mat[y, x] == 1 and adj_mat[x, z] == 1:
+          new_features[[y, z], 1] += 1
+          new_features[x, 2] += 1
+          continue
+        if adj_mat[x, z] == 1 and adj_mat[z, y] == 1:
+          new_features[[x, y], 1] += 1
+          new_features[z, 2] += 1
+          continue
+      return new_features
+    
+
+    def __call__(self, data: Union[Data, HeteroData]):
+        for store in data.node_stores:
+            new_features=self.__3SI__(store.edge_index,store.num_nodes)
+            if not hasattr(store, 'x'):
+                store.x = new_features
+            else:
+                store.x = torch.cat([store.x, new_features], 1)
+        return data
+        
+class MinMaxNormalizationTransform(BaseTransform):
+    def __init__(self):
+        BaseTransform.__init__(self)
+    
+    def __call__(self, data: Union[Data, HeteroData]):
+        if not hasattr(data.node_stores[0], 'x'):
+            return data
+        for store in data.node_stores:
+           ma = torch.max(store.x,dim=0)[0]
+           mi = torch.min(store.x,dim=0)[0]
+           store.x = torch.nan_to_num((store.x-mi)/(ma-mi))
         return data
