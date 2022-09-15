@@ -16,6 +16,7 @@ Run the following command, use "--help" to list the parameters.
 ```
 python synthetic.py
 ```
+The permutaion equivariance experiment is in equivariant_exp.ipynb.
 
 ## Graph classification
 Run the following command, use "--help" to list the parameters.
